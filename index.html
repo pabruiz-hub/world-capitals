@@ -1,0 +1,214 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>World Capitals</title>
+  <link rel="stylesheet" href="css/style.css">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&family=Orbitron:wght@400;600;700;900&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css">
+  <script src="https://cdn.jsdelivr.net/npm/d3@7"></script>
+  <script src="https://cdn.jsdelivr.net/npm/topojson@3"></script>
+</head>
+<body>
+<div id="app">
+
+  <!-- ─── NAVBAR ─── -->
+  <nav id="navbar">
+    <div class="nav-logo" onclick="showScreen('home')">
+      <i class="fas fa-globe-americas"></i>
+      <span>World Capitals</span>
+    </div>
+    <div class="nav-right">
+      <button class="nav-btn" onclick="showScreen('stats')">
+        <i class="fas fa-chart-bar"></i><span>Stats</span>
+      </button>
+      <button class="nav-btn" onclick="showScreen('trophies')">
+        <i class="fas fa-trophy"></i><span>Trophies</span>
+      </button>
+      <div class="nav-score-badge">
+        <i class="fas fa-star"></i>
+        <span id="nav-score">0</span>
+      </div>
+    </div>
+  </nav>
+
+  <!-- ─── HOME SCREEN ─── -->
+  <section id="screen-home" class="screen active">
+    <div class="hero">
+      <div class="hero-eyebrow"><i class="fas fa-globe-americas"></i> Geography Learning</div>
+      <h1 class="hero-title">World Capitals</h1>
+      <p class="hero-sub">Study and master every capital on the planet</p>
+    </div>
+    <div class="carousel-outer">
+      <button class="carousel-arrow" id="arrow-prev"><i class="fas fa-chevron-left"></i></button>
+      <div class="carousel-viewport">
+        <div class="carousel-track" id="carousel-track"></div>
+      </div>
+      <button class="carousel-arrow" id="arrow-next"><i class="fas fa-chevron-right"></i></button>
+    </div>
+    <div class="carousel-dots" id="carousel-dots"></div>
+  </section>
+
+  <!-- ─── MAP SCREEN ─── -->
+  <section id="screen-map" class="screen">
+    <div id="map-topbar">
+      <button class="back-btn" id="map-back-btn"><i class="fas fa-arrow-left"></i> Back</button>
+      <h2 id="map-title-label">World Map</h2>
+      <div id="map-topbar-right">
+        <div id="game-hud" class="hidden">
+          <div class="hud-item"><i class="fas fa-list-ol"></i><span id="hud-progress">0/0</span></div>
+          <div class="hud-item score-hud"><i class="fas fa-star"></i><span id="hud-score">0</span></div>
+        </div>
+      </div>
+    </div>
+
+    <div id="map-area">
+      <svg id="map-svg"></svg>
+
+      <!-- Loading -->
+      <div id="map-loading">
+        <div class="spinner"></div>
+        <p>Loading map…</p>
+      </div>
+
+      <!-- Study Panel -->
+      <div id="study-panel" class="hidden">
+        <button class="panel-close" id="study-close"><i class="fas fa-times"></i></button>
+        <div class="study-inner">
+          <div class="study-flag-wrap">
+            <img id="study-flag" src="" alt="Flag" onerror="this.style.display='none'">
+          </div>
+          <div class="study-info">
+            <h3 id="study-name"></h3>
+            <p class="study-capital"><i class="fas fa-star cap-star"></i><span id="study-capital"></span></p>
+            <button class="btn-more-info" id="btn-more-info"><i class="fas fa-info-circle"></i> More Info</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Game Panel -->
+      <div id="game-panel" class="hidden">
+        <div id="game-panel-inner">
+          <div class="gp-header">
+            <span id="gp-mode-badge" class="mode-badge"></span>
+            <div class="gp-lives" id="gp-lives">
+              <i class="fas fa-heart"></i><i class="fas fa-heart"></i><i class="fas fa-heart"></i>
+            </div>
+          </div>
+          <div id="gp-flag-wrap" class="hidden"><img id="gp-flag" src="" alt=""></div>
+          <p id="gp-question"></p>
+          <div id="gp-input-wrap" class="hidden">
+            <input type="text" id="gp-input" placeholder="Type the capital…" autocomplete="off" autocorrect="off" spellcheck="false">
+            <button id="gp-submit"><i class="fas fa-check"></i></button>
+          </div>
+          <div id="gp-feedback" class="hidden"></div>
+        </div>
+      </div>
+
+      <!-- More Info Modal -->
+      <div id="info-modal" class="overlay hidden">
+        <div class="overlay-card">
+          <button class="panel-close overlay-close" id="info-modal-close"><i class="fas fa-times"></i></button>
+          <div class="info-modal-header">
+            <img id="info-modal-flag" src="" alt="">
+            <div>
+              <h2 id="info-modal-name"></h2>
+              <p><i class="fas fa-star cap-star"></i> <span id="info-modal-capital"></span></p>
+            </div>
+          </div>
+          <div id="info-modal-body" class="info-modal-body"></div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ─── STATS SCREEN ─── -->
+  <section id="screen-stats" class="screen">
+    <div class="page-header">
+      <button class="back-btn" onclick="showScreen('home')"><i class="fas fa-arrow-left"></i> Back</button>
+      <h2>Statistics</h2>
+    </div>
+    <div id="stats-body"></div>
+  </section>
+
+  <!-- ─── TROPHIES SCREEN ─── -->
+  <section id="screen-trophies" class="screen">
+    <div class="page-header">
+      <button class="back-btn" onclick="showScreen('home')"><i class="fas fa-arrow-left"></i> Back</button>
+      <h2>Trophies &amp; Achievements</h2>
+    </div>
+    <div id="trophies-body"></div>
+  </section>
+
+  <!-- ─── MODE MODAL ─── -->
+  <div id="mode-modal" class="overlay hidden">
+    <div class="overlay-card mode-card">
+      <button class="panel-close overlay-close" id="mode-modal-close"><i class="fas fa-times"></i></button>
+      <div id="mode-modal-header"></div>
+
+      <!-- Stage 1: Study / Play -->
+      <div id="mode-stage-1">
+        <div class="mode-grid">
+          <button class="mode-big-btn study-big" id="btn-study">
+            <div class="mode-big-icon"><i class="fas fa-book-open"></i></div>
+            <strong>Study</strong>
+            <small>Explore countries and learn their capitals</small>
+          </button>
+          <button class="mode-big-btn play-big" id="btn-play">
+            <div class="mode-big-icon"><i class="fas fa-gamepad"></i></div>
+            <strong>Play</strong>
+            <small>Test your knowledge with challenges</small>
+          </button>
+        </div>
+      </div>
+
+      <!-- Stage 2: Game type -->
+      <div id="mode-stage-2" class="hidden">
+        <h3>Choose Game Mode</h3>
+        <div class="game-type-grid">
+          <button class="game-type-btn" id="btn-mode-countries">
+            <i class="fas fa-map-marked-alt"></i>
+            <strong>Countries</strong>
+            <small>Find the country on the map</small>
+          </button>
+          <button class="game-type-btn" id="btn-mode-capitals">
+            <i class="fas fa-city"></i>
+            <strong>Capitals</strong>
+            <small>Type the capital city</small>
+          </button>
+          <button class="game-type-btn" id="btn-mode-flags">
+            <i class="fas fa-flag"></i>
+            <strong>Flags</strong>
+            <small>Identify the country by flag</small>
+          </button>
+        </div>
+        <button class="link-btn" id="mode-stage-back"><i class="fas fa-arrow-left"></i> Back</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ─── GAME OVER MODAL ─── -->
+  <div id="gameover-modal" class="overlay hidden">
+    <div class="overlay-card gameover-card">
+      <div id="gameover-header"></div>
+      <div id="gameover-stats"></div>
+      <div class="gameover-actions">
+        <button class="btn-primary" id="btn-play-again"><i class="fas fa-redo"></i> Play Again</button>
+        <button class="btn-secondary" id="btn-go-home"><i class="fas fa-home"></i> Home</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ─── TOAST ─── -->
+  <div id="toast" class="hidden"></div>
+
+</div><!-- #app -->
+
+<script src="js/data.js"></script>
+<script src="js/stats.js"></script>
+<script src="js/game.js"></script>
+<script src="js/renderer.js"></script>
+<script src="js/main.js"></script>
+</body>
+</html>
