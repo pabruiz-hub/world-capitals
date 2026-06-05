@@ -67,11 +67,19 @@ function applyStoredTheme() {
 }
 
 function toggleTheme() {
-  const current = document.documentElement.getAttribute("data-theme");
+  const html    = document.documentElement;
+  const current = html.getAttribute("data-theme");
   const next    = current === "dark" ? "light" : "dark";
-  document.documentElement.setAttribute("data-theme", next);
+
+  // Enable colour transitions on everything for this switch
+  html.classList.add("theme-transitioning");
+  html.setAttribute("data-theme", next);
   document.getElementById("theme-icon").className = next === "dark" ? "fas fa-moon" : "fas fa-sun";
   localStorage.setItem("wc_theme", next);
+
+  // Remove transition class after animation completes
+  setTimeout(() => html.classList.remove("theme-transitioning"), 450);
+
   const newT = Stats.recordThemeToggle();
   if (newT.length) showTrophyPopup(newT[0]);
 }

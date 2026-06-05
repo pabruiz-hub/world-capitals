@@ -3,9 +3,9 @@
 // ═══════════════════════════════════════════════
 
 const MAP_PALETTE = [
-  "#4a8fb5","#e8a87c","#7ec8a4","#c47ac0",
-  "#e8c547","#85b0e8","#e88a8a","#a8d88a",
-  "#8ab8e8","#f0a070","#90c8b0","#d090c0"
+  "#4a7fa5","#c97b4b","#5ea87a","#9b63a8",
+  "#b8a030","#4a8fa8","#a85050","#6a9a6a",
+  "#7070b0","#b07840","#40a888","#a06080"
 ];
 
 const Renderer = {
@@ -14,18 +14,18 @@ const Renderer = {
   zoom: null,
   currentMapDef: null,
   loadedTopoCache: {},
-  featuresInMap: [],    // currently rendered feature ids
+  featuresInMap: [],
+  onClickEntity: null,
 
   async renderMap(mapDef, onClickEntity) {
     this.currentMapDef = mapDef;
     this.featuresInMap = [];
     this.onClickEntity = onClickEntity;
 
-    const svgEl = document.getElementById("map-svg");
+    const svgEl  = document.getElementById("map-svg");
     const loading = document.getElementById("map-loading");
     loading.style.display = "flex";
 
-    // Clear previous
     d3.select(svgEl).selectAll("*").remove();
 
     const width  = svgEl.clientWidth  || svgEl.parentElement.clientWidth;
@@ -35,22 +35,20 @@ const Renderer = {
       .attr("viewBox", `0 0 ${width} ${height}`)
       .style("overflow", "hidden");
 
-    // Ocean background — respect CSS theme variable
-    const oceanColor = getComputedStyle(document.documentElement).getPropertyValue("--map-ocean").trim() || "#0d1e3a";
+    // Ocean
+    const oceanColor = getComputedStyle(document.documentElement)
+      .getPropertyValue("--map-ocean").trim() || "#0d1e3a";
     this.svg.append("rect")
       .attr("width", width).attr("height", height)
-      .attr("fill", oceanColor);
+      .style("fill", oceanColor);
 
-    this.g = this.svg.append("g").attr("class", "map-group");
+    this.g = this.svg.append("g").attr("class", "map-root");
 
-    // Zoom
+    // Zoom / pan
     this.zoom = d3.zoom()
       .scaleExtent([0.5, 16])
-      .on("zoom", (event) => {
-        this.g.attr("transform", event.transform);
-      });
+      .on("zoom", (event) => this.g.attr("transform", event.transform));
     this.svg.call(this.zoom);
-    // Prevent zoom from blocking click on mobile
     this.svg.on("dblclick.zoom", null);
 
     try {
@@ -58,13 +56,15 @@ const Renderer = {
 
       if (mapDef.isUSStates) {
         this._renderUSStates(topo, width, height);
+      } else if (mapDef.showContext) {
+        this._renderWithContext(topo, mapDef, width, height);
       } else {
         this._renderWorld(topo, mapDef, width, height);
       }
 
       loading.style.display = "none";
     } catch(e) {
-      loading.innerHTML = `<p style="color:var(--red2)">Failed to load map. Check your internet connection.</p>`;
+      loading.innerHTML = `<p style="color:var(--rose-l)">Failed to load map. Check your internet connection.</p>`;
       console.error(e);
     }
   },
@@ -76,111 +76,133 @@ const Renderer = {
     return topo;
   },
 
+  // ─── FULL WORLD (no filter) ─────────────────
   _renderWorld(topo, mapDef, width, height) {
-    const obj = topo.objects[mapDef.topoObject];
+    const obj         = topo.objects[mapDef.topoObject];
     const allFeatures = topojson.feature(topo, obj).features;
+    const neighbors   = topojson.neighbors(obj.geometries);
+    const colorMap    = this._greedyColor(allFeatures, allFeatures, neighbors);
 
-    // Filter by continent if needed
-    const features = mapDef.filter
-      ? allFeatures.filter(f => mapDef.filter(String(f.id)))
-      : allFeatures;
+    const projection = d3.geoNaturalEarth1();
+    const pathGen    = d3.geoPath().projection(projection);
+    projection.fitExtent([[10,10],[width-10,height-10]],
+      { type:"FeatureCollection", features: allFeatures });
 
-    // Graph coloring
-    const geoAll = topojson.feature(topo, obj);
-    const allNeighbors = topojson.neighbors(obj.geometries);
+    // Graticule
+    this.g.append("path")
+      .datum(d3.geoGraticule()())
+      .attr("d", pathGen)
+      .attr("fill", "none")
+      .style("stroke", "var(--map-grat)")
+      .attr("stroke-width", 0.5);
 
-    // Build index: feature id → index in allFeatures
-    const idToIdx = {};
-    allFeatures.forEach((f, i) => { idToIdx[String(f.id)] = i; });
+    this.featuresInMap = allFeatures.map(f => String(f.id));
 
-    // Build color assignments for filtered features
-    const filteredIds = new Set(features.map(f => String(f.id)));
-    const colorMap = {};
-
-    for (let i = 0; i < allFeatures.length; i++) {
-      const fid = String(allFeatures[i].id);
-      if (!filteredIds.has(fid)) continue;
-      const usedColors = new Set(
-        allNeighbors[i]
-          .map(j => colorMap[String(allFeatures[j].id)])
-          .filter(c => c !== undefined)
-      );
-      let c = 0;
-      while (usedColors.has(c)) c++;
-      colorMap[fid] = c;
-    }
-
-    // Projection
-    let projection;
-    if (mapDef.projection === "NaturalEarth1") {
-      projection = d3.geoNaturalEarth1();
-    } else {
-      projection = d3.geoMercator();
-    }
-
-    const pathGen = d3.geoPath().projection(projection);
-    const fc = { type: "FeatureCollection", features };
-    const padding = mapDef.projection === "NaturalEarth1" ? 10 : 20;
-    projection.fitExtent([[padding, padding], [width - padding, height - padding]], fc);
-
-    this.featuresInMap = features.map(f => String(f.id));
-
-    // Graticule for world map
-    if (mapDef.projection === "NaturalEarth1") {
-      const graticule = d3.geoGraticule()();
-      this.g.append("path")
-        .datum(graticule)
-        .attr("d", pathGen)
-        .attr("fill", "none")
-        .attr("stroke", "rgba(255,255,255,0.04)")
-        .attr("stroke-width", 0.5);
-    }
-
-    // Render countries
     this.g.selectAll(".country-path")
-      .data(features)
+      .data(allFeatures)
       .join("path")
         .attr("class", "country-path")
-        .attr("id", d => `country-${d.id}`)
-        .attr("d", pathGen)
-        .attr("fill", d => MAP_PALETTE[(colorMap[String(d.id)] || 0) % MAP_PALETTE.length])
-        .on("click", (event, d) => {
-          event.stopPropagation();
-          if (this.onClickEntity) this.onClickEntity(String(d.id));
-        })
-        .on("touchend", (event, d) => {
-          event.preventDefault();
-          event.stopPropagation();
-          if (this.onClickEntity) this.onClickEntity(String(d.id));
-        });
-
-    // Country labels for study mode (only on large-ish areas)
-    // (skip for performance; info shown in panel)
+        .attr("id",    d => `country-${d.id}`)
+        .attr("d",     pathGen)
+        .attr("fill",  d => MAP_PALETTE[(colorMap[String(d.id)] || 0) % MAP_PALETTE.length])
+        .on("click",    (e,d) => { e.stopPropagation(); this.onClickEntity?.(String(d.id)); })
+        .on("touchend", (e,d) => { e.preventDefault(); e.stopPropagation(); this.onClickEntity?.(String(d.id)); });
   },
 
-  _renderUSStates(topo, width, height) {
-    const obj = topo.objects[this.currentMapDef.topoObject];
-    const features = topojson.feature(topo, obj).features;
-    const neighbors = topojson.neighbors(obj.geometries);
+  // ─── REGION WITH FULL WORLD CONTEXT ─────────
+  _renderWithContext(topo, mapDef, width, height) {
+    const obj         = topo.objects[mapDef.topoObject];
+    const allFeatures = topojson.feature(topo, obj).features;
+    const neighbors   = topojson.neighbors(obj.geometries);
 
-    // Color assignment
-    const colorMap = {};
-    for (let i = 0; i < features.length; i++) {
-      const fid = String(+features[i].id);
-      const usedColors = new Set(
-        neighbors[i]
-          .map(j => colorMap[String(+features[j].id)])
-          .filter(c => c !== undefined)
-      );
-      let c = 0;
-      while (usedColors.has(c)) c++;
-      colorMap[fid] = c;
-    }
+    const isActive  = f => mapDef.filter ? mapDef.filter(String(f.id)) : true;
+    const active    = allFeatures.filter(isActive);
+    const bg        = allFeatures.filter(f => !isActive(f));
+    const colorMap  = this._greedyColor(active, allFeatures, neighbors);
+
+    // Projection fitted to the active region
+    const projection = d3.geoNaturalEarth1();
+    const pathGen    = d3.geoPath().projection(projection);
+    const padding    = 40;
+    projection.fitExtent(
+      [[padding, padding], [width - padding, height - padding]],
+      { type: "FeatureCollection", features: active }
+    );
+
+    this.featuresInMap = active.map(f => String(f.id));
+
+    // ── SVG filter: blur + dim for background ──
+    const defs = this.svg.insert("defs", ":first-child");
+    const filter = defs.append("filter")
+      .attr("id", "ctx-dim")
+      .attr("x", "-20%").attr("y", "-20%")
+      .attr("width", "140%").attr("height", "140%");
+    filter.append("feGaussianBlur")
+      .attr("in", "SourceGraphic")
+      .attr("stdDeviation", "1.5")
+      .attr("result", "blur");
+    filter.append("feColorMatrix")
+      .attr("in", "blur")
+      .attr("type", "saturate")
+      .attr("values", "0.15")
+      .attr("result", "desaturated");
+    filter.append("feBlend")
+      .attr("in", "desaturated")
+      .attr("in2", "SourceGraphic")
+      .attr("mode", "normal");
+
+    // ── Background (rest of world) ─────────────
+    const dimColor = getComputedStyle(document.documentElement)
+      .getPropertyValue("--map-dim").trim() || "#1e2035";
+
+    this.g.append("g")
+      .attr("class", "bg-countries")
+      .attr("filter", "url(#ctx-dim)")
+      .selectAll("path")
+      .data(bg)
+      .join("path")
+        .attr("d", pathGen)
+        .style("fill", dimColor)
+        .style("opacity", "0.55")
+        .attr("stroke", "rgba(0,0,0,0.25)")
+        .attr("stroke-width", 0.35);
+
+    // ── Active region (coloured, interactive) ──
+    this.g.append("g")
+      .attr("class", "fg-countries")
+      .selectAll(".country-path")
+      .data(active)
+      .join("path")
+        .attr("class", "country-path")
+        .attr("id",    d => `country-${d.id}`)
+        .attr("d",     pathGen)
+        .attr("fill",  d => MAP_PALETTE[(colorMap[String(d.id)] || 0) % MAP_PALETTE.length])
+        .on("click",    (e,d) => { e.stopPropagation(); this.onClickEntity?.(String(d.id)); })
+        .on("touchend", (e,d) => { e.preventDefault(); e.stopPropagation(); this.onClickEntity?.(String(d.id)); });
+
+    // Subtle border between active region and bg
+    this.g.append("g")
+      .attr("class", "fg-borders")
+      .selectAll("path")
+      .data(active)
+      .join("path")
+        .attr("d", pathGen)
+        .attr("fill", "none")
+        .attr("stroke", "rgba(255,255,255,0.18)")
+        .attr("stroke-width", 0.6);
+  },
+
+  // ─── US STATES ──────────────────────────────
+  _renderUSStates(topo, width, height) {
+    const obj       = topo.objects[this.currentMapDef.topoObject];
+    const features  = topojson.feature(topo, obj).features;
+    const neighbors = topojson.neighbors(obj.geometries);
+    const colorMap  = this._greedyColor(features, features, neighbors, f => String(+f.id));
 
     const projection = d3.geoAlbersUsa();
-    const pathGen = d3.geoPath().projection(projection);
-    const fc = { type: "FeatureCollection", features };
-    projection.fitExtent([[20, 20], [width - 20, height - 20]], fc);
+    const pathGen    = d3.geoPath().projection(projection);
+    projection.fitExtent([[20,20],[width-20,height-20]],
+      { type:"FeatureCollection", features });
 
     this.featuresInMap = features.map(f => String(+f.id));
 
@@ -188,108 +210,120 @@ const Renderer = {
       .data(features)
       .join("path")
         .attr("class", "us-state-path")
-        .attr("id", d => `country-${+d.id}`)
-        .attr("d", pathGen)
-        .attr("fill", d => MAP_PALETTE[(colorMap[String(+d.id)] || 0) % MAP_PALETTE.length])
-        .on("click", (event, d) => {
-          event.stopPropagation();
-          if (this.onClickEntity) this.onClickEntity(String(+d.id));
-        })
-        .on("touchend", (event, d) => {
-          event.preventDefault();
-          event.stopPropagation();
-          if (this.onClickEntity) this.onClickEntity(String(+d.id));
-        });
+        .attr("id",    d => `country-${+d.id}`)
+        .attr("d",     pathGen)
+        .attr("fill",  d => MAP_PALETTE[(colorMap[String(+d.id)] || 0) % MAP_PALETTE.length])
+        .on("click",    (e,d) => { e.stopPropagation(); this.onClickEntity?.(String(+d.id)); })
+        .on("touchend", (e,d) => { e.preventDefault(); e.stopPropagation(); this.onClickEntity?.(String(+d.id)); });
   },
 
-  // ─── MARK STUDIED (study mode visited) ────
+  // ─── GREEDY GRAPH COLORING ──────────────────
+  // colorFeatures: features to colour; allFeatures: full list for index lookup
+  _greedyColor(colorFeatures, allFeatures, neighbors, idFn) {
+    idFn = idFn || (f => String(f.id));
+    const idxMap = {};
+    allFeatures.forEach((f, i) => { idxMap[idFn(f)] = i; });
+
+    const colorMap = {};
+    colorFeatures.forEach(f => {
+      const fid  = idFn(f);
+      const idx  = idxMap[fid];
+      if (idx === undefined) return;
+      const used = new Set(
+        (neighbors[idx] || [])
+          .map(j => colorMap[idFn(allFeatures[j])])
+          .filter(c => c !== undefined)
+      );
+      let c = 0;
+      while (used.has(c)) c++;
+      colorMap[fid] = c;
+    });
+    return colorMap;
+  },
+
+  // ─── HIGHLIGHT / MARK ───────────────────────
+  highlightEntity(id, type) {
+    const el = document.getElementById(`country-${id}`);
+    if (!el) return;
+    el.classList.remove("correct","wrong","dimmed","highlighted");
+    if (type !== "reset") el.classList.add(type);
+  },
+
   markStudied(id) {
     const el = document.getElementById(`country-${id}`);
     if (el) el.classList.add("studied");
   },
 
-  // ─── HIGHLIGHT ENTITY ─────────────────────
-  highlightEntity(id, type) {
-    // type: "correct" | "wrong" | "selected" | "dimmed" | "reset"
-    const el = document.getElementById(`country-${id}`);
-    if (!el) return;
-
-    el.classList.remove("correct","wrong","dimmed","highlighted");
-    if (type !== "reset") el.classList.add(type);
-  },
-
   resetAllHighlights() {
     this.svg && this.svg.selectAll(".country-path, .us-state-path")
-      .classed("correct", false)
-      .classed("wrong", false)
-      .classed("dimmed", false)
-      .classed("highlighted", false);
-  },
-
-  dimAllExcept(ids) {
-    const set = new Set(ids.map(String));
-    this.svg && this.svg.selectAll(".country-path, .us-state-path")
-      .each(function(d) {
-        const fid = String(d ? (d.id !== undefined ? +d.id : d) : "");
-        d3.select(this).classed("dimmed", !set.has(fid));
-      });
+      .classed("correct", false).classed("wrong", false)
+      .classed("dimmed",  false).classed("highlighted", false);
   },
 
   getFeatureIds() { return this.featuresInMap; }
 };
 
-// ─── MINI MAP for cards ─────────────────────────
+// ─── MINI MAP for carousel cards ────────────────
 async function renderCardMiniMap(mapDef, containerEl) {
   try {
-    const topo = await Renderer._loadTopo(mapDef.topoUrl);
-    const obj  = topo.objects[mapDef.topoObject];
+    const topo        = await Renderer._loadTopo(mapDef.topoUrl);
+    const obj         = topo.objects[mapDef.topoObject];
     const allFeatures = topojson.feature(topo, obj).features;
-    const features = mapDef.filter
+
+    // For context maps, show world context in the card too
+    const activeFeatures = mapDef.filter
       ? allFeatures.filter(f => mapDef.filter(String(f.id)))
       : allFeatures;
+    const bgFeatures = mapDef.showContext
+      ? allFeatures.filter(f => !mapDef.filter(String(f.id)))
+      : [];
 
-    const W = containerEl.offsetWidth  || 188;
-    const H = containerEl.offsetHeight || 130;
+    const W = containerEl.offsetWidth  || 185;
+    const H = containerEl.offsetHeight || 126;
 
-    // Build SVG on top of the existing bg
     const svg = d3.select(containerEl).append("svg")
-      .style("position", "absolute").style("inset", "0").style("z-index", "2")
+      .style("position","absolute").style("inset","0").style("z-index","2")
       .attr("width", W).attr("height", H);
 
     let projection;
     if (mapDef.isUSStates) projection = d3.geoAlbersUsa();
-    else if (mapDef.projection === "NaturalEarth1") projection = d3.geoNaturalEarth1();
-    else projection = d3.geoMercator();
+    else                   projection = d3.geoNaturalEarth1();
 
     const pathGen = d3.geoPath().projection(projection);
-    const fc = { type: "FeatureCollection", features };
-    projection.fitExtent([[4, 4], [W - 4, H - 4]], fc);
+    projection.fitExtent([[3,3],[W-3,H-3]],
+      { type:"FeatureCollection", features: activeFeatures });
 
-    // Graph coloring
     const neighbors  = topojson.neighbors(obj.geometries);
-    const filteredSet = new Set(features.map(f => String(f.id)));
-    const colorMap = {};
-    allFeatures.forEach((f, i) => {
-      const fid = String(f.id);
-      if (!filteredSet.has(fid)) return;
-      const used = new Set(neighbors[i].map(j => colorMap[String(allFeatures[j].id)]).filter(c => c !== undefined));
-      let c = 0; while (used.has(c)) c++;
-      colorMap[fid] = c;
-    });
+    const colorMap   = Renderer._greedyColor(activeFeatures, allFeatures, neighbors);
+    const dimColor   = getComputedStyle(document.documentElement).getPropertyValue("--map-dim").trim() || "#1e2035";
 
-    svg.selectAll("path")
-      .data(features)
+    // Background countries
+    if (bgFeatures.length) {
+      svg.append("g")
+        .style("opacity","0.4")
+        .style("filter","blur(0.8px)")
+        .selectAll("path")
+        .data(bgFeatures)
+        .join("path")
+          .attr("d", pathGen)
+          .style("fill", dimColor)
+          .attr("stroke","rgba(0,0,0,0.2)")
+          .attr("stroke-width",0.3);
+    }
+
+    // Active countries
+    svg.selectAll(".cp")
+      .data(activeFeatures)
       .join("path")
+        .attr("class","cp")
         .attr("d", pathGen)
-        .attr("fill", d => MAP_PALETTE[(colorMap[String(d.id)] || 0) % MAP_PALETTE.length])
-        .attr("fill-opacity", 0.85)
-        .attr("stroke", "rgba(0,0,0,0.5)")
+        .attr("fill", d => MAP_PALETTE[(colorMap[String(d.id)]||0) % MAP_PALETTE.length])
+        .attr("fill-opacity", 0.88)
+        .attr("stroke","rgba(0,0,0,0.45)")
         .attr("stroke-width", 0.4);
 
-    // Hide emoji fallback once map renders
+    // Hide emoji fallback
     const emoji = containerEl.querySelector(".card-emoji-fallback");
     if (emoji) emoji.style.display = "none";
-  } catch(e) {
-    // leave emoji fallback visible
-  }
+  } catch(e) { /* leave emoji */ }
 }

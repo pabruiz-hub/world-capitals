@@ -292,8 +292,8 @@ const MAP_DEFS = [
     topoObject: "countries",
     isUSStates: false,
     filter: (id) => COUNTRIES[id] && COUNTRIES[id].continent === "europe",
-    projection: "Mercator",
-    fitRegion: "europe"
+    projection: "NaturalEarth1",
+    showContext: true
   },
   {
     id: "africa",
@@ -305,8 +305,8 @@ const MAP_DEFS = [
     topoObject: "countries",
     isUSStates: false,
     filter: (id) => COUNTRIES[id] && COUNTRIES[id].continent === "africa",
-    projection: "Mercator",
-    fitRegion: "africa"
+    projection: "NaturalEarth1",
+    showContext: true
   },
   {
     id: "asia",
@@ -318,8 +318,8 @@ const MAP_DEFS = [
     topoObject: "countries",
     isUSStates: false,
     filter: (id) => COUNTRIES[id] && COUNTRIES[id].continent === "asia",
-    projection: "Mercator",
-    fitRegion: "asia"
+    projection: "NaturalEarth1",
+    showContext: true
   },
   {
     id: "america",
@@ -331,8 +331,8 @@ const MAP_DEFS = [
     topoObject: "countries",
     isUSStates: false,
     filter: (id) => COUNTRIES[id] && COUNTRIES[id].continent === "america",
-    projection: "Mercator",
-    fitRegion: "america"
+    projection: "NaturalEarth1",
+    showContext: true
   },
   {
     id: "us_states",

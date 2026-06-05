@@ -38,6 +38,7 @@
 
   --map-ocean: #0d1e3a;
   --map-grat:  rgba(255,255,255,0.04);
+  --map-dim:   #1e2035;
 
   --r-xs: 6px; --r-sm: 10px; --r-md: 14px;
   --r-lg: 18px; --r-xl: 24px; --r-2xl: 32px;
@@ -77,11 +78,26 @@
 
   --map-ocean: #c8dff0;
   --map-grat:  rgba(0,0,0,0.06);
+  --map-dim:   #b8c4d8;
 
   --shadow-sm: 0 1px 4px rgba(99,102,241,0.08);
   --shadow-md: 0 4px 20px rgba(99,102,241,0.12);
   --shadow-lg: 0 8px 40px rgba(99,102,241,0.15);
   --shadow-xl: 0 20px 60px rgba(99,102,241,0.18);
+}
+
+/* ─── THEME TRANSITION ────────────────────── */
+/* Applied briefly during theme toggle so all colours animate */
+.theme-transitioning,
+.theme-transitioning *,
+.theme-transitioning *::before,
+.theme-transitioning *::after {
+  transition:
+    background-color 0.4s ease,
+    color            0.4s ease,
+    border-color     0.4s ease,
+    box-shadow       0.4s ease,
+    opacity          0.4s ease !important;
 }
 
 /* ═══════════════════════════════════════════
