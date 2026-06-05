@@ -2,18 +2,21 @@
 //  WORLD CAPITALS — Main App Controller
 // ═══════════════════════════════════════════════
 
-// ─── STATE ─────────────────────────────────────
-let activeScreen = "home";
-let carouselIdx  = 0;
+let activeScreen   = "home";
+let carouselIdx    = 0;
 let selectedMapDef = null;
-let currentMode  = null;   // "study" | "play"
+let currentMode    = null;
+let trophyTimer    = null;
 
 // ─── INIT ──────────────────────────────────────
 document.addEventListener("DOMContentLoaded", () => {
   Stats.load();
+  applyStoredTheme();
   buildCarousel();
   bindUIEvents();
   updateNavScore();
+  updateNavLevel();
+  updateNavStreak();
   showScreen("home");
 });
 
@@ -23,14 +26,69 @@ function showScreen(name) {
   const el = document.getElementById(`screen-${name}`);
   if (el) el.classList.add("active");
   activeScreen = name;
-
   if (name === "stats")    renderStatsScreen();
   if (name === "trophies") renderTrophiesScreen();
 }
 
-// ─── NAVBAR SCORE ──────────────────────────────
+// ─── NAVBAR UPDATES ────────────────────────────
 function updateNavScore() {
   document.getElementById("nav-score").textContent = Stats.getTotalScore().toLocaleString();
+  updateXPBar();
+}
+
+function updateNavLevel() {
+  const lv = Stats.getLevel();
+  document.getElementById("nav-level-val").textContent = `Lv ${lv}`;
+  updateXPBar();
+}
+
+function updateNavStreak() {
+  const streak = Stats.getDailyStreak();
+  const el = document.getElementById("nav-streak");
+  if (streak >= 2) {
+    el.classList.remove("hidden");
+    document.getElementById("nav-streak-val").textContent = streak;
+  } else {
+    el.classList.add("hidden");
+  }
+}
+
+function updateXPBar() {
+  const xp  = Stats.getTotalScore();
+  const { pct } = xpProgressInLevel(xp);
+  document.getElementById("xp-bar-fill").style.width = `${pct}%`;
+}
+
+// ─── THEME ─────────────────────────────────────
+function applyStoredTheme() {
+  const saved = localStorage.getItem("wc_theme") || "dark";
+  document.documentElement.setAttribute("data-theme", saved);
+  document.getElementById("theme-icon").className = saved === "dark" ? "fas fa-moon" : "fas fa-sun";
+}
+
+function toggleTheme() {
+  const current = document.documentElement.getAttribute("data-theme");
+  const next    = current === "dark" ? "light" : "dark";
+  document.documentElement.setAttribute("data-theme", next);
+  document.getElementById("theme-icon").className = next === "dark" ? "fas fa-moon" : "fas fa-sun";
+  localStorage.setItem("wc_theme", next);
+  const newT = Stats.recordThemeToggle();
+  if (newT.length) showTrophyPopup(newT[0]);
+}
+
+// ─── TROPHY POPUP ──────────────────────────────
+function showTrophyPopup(trophy) {
+  const el = document.getElementById("trophy-popup");
+  if (!el) return;
+  clearTimeout(trophyTimer);
+  el.classList.remove("hidden", "hiding");
+  document.getElementById("trophy-popup-icon").textContent = trophy.icon;
+  document.getElementById("trophy-popup-name").textContent = trophy.name;
+  document.getElementById("trophy-popup-desc").textContent = trophy.desc;
+  trophyTimer = setTimeout(() => {
+    el.classList.add("hiding");
+    setTimeout(() => el.classList.add("hidden"), 320);
+  }, 3500);
 }
 
 // ─── CAROUSEL ──────────────────────────────────
@@ -42,7 +100,6 @@ function buildCarousel() {
 
   MAP_DEFS.forEach((def, i) => {
     const pct = Stats.getMapLearning(def.id);
-
     const card = document.createElement("div");
     card.className = `map-card${i === carouselIdx ? " active" : ""}`;
     card.dataset.idx = i;
@@ -58,24 +115,16 @@ function buildCarousel() {
         </div>
         <div class="card-progress-label">${pct > 0 ? `${pct}% learned` : "Not started"}</div>
       </div>`;
-
-    card.addEventListener("click", () => {
-      setCarouselIdx(i);
-      openModeModal(def);
-    });
+    card.addEventListener("click", () => { setCarouselIdx(i); openModeModal(def); });
     track.appendChild(card);
 
-    // Dot
     const dot = document.createElement("div");
     dot.className = `carousel-dot${i === carouselIdx ? " active" : ""}`;
     dot.addEventListener("click", () => setCarouselIdx(i));
     dots.appendChild(dot);
 
-    // Load mini map SVG asynchronously into the card visual
     const previewEl = document.getElementById(`card-preview-${i}`);
-    setTimeout(() => {
-      renderCardMiniMap(def, previewEl).catch(() => {});
-    }, i * 150);
+    setTimeout(() => renderCardMiniMap(def, previewEl).catch(() => {}), i * 150);
   });
 
   applyCarouselTransform();
@@ -83,43 +132,35 @@ function buildCarousel() {
 
 function setCarouselIdx(idx) {
   carouselIdx = Math.max(0, Math.min(MAP_DEFS.length - 1, idx));
-  document.querySelectorAll(".map-card").forEach((c, i) => {
-    c.classList.toggle("active", i === carouselIdx);
-  });
-  document.querySelectorAll(".carousel-dot").forEach((d, i) => {
-    d.classList.toggle("active", i === carouselIdx);
-  });
+  document.querySelectorAll(".map-card").forEach((c, i) => c.classList.toggle("active", i === carouselIdx));
+  document.querySelectorAll(".carousel-dot").forEach((d, i) => d.classList.toggle("active", i === carouselIdx));
   applyCarouselTransform();
 }
 
 function applyCarouselTransform() {
-  const track = document.getElementById("carousel-track");
+  const track    = document.getElementById("carousel-track");
   const viewport = document.querySelector(".carousel-viewport");
-  const cards = track.querySelectorAll(".map-card");
+  const cards    = track.querySelectorAll(".map-card");
   if (!cards.length) return;
-
-  const cardW = cards[0].offsetWidth + 20; // + gap
-  const vw = viewport.clientWidth;
+  const cardW  = cards[0].offsetWidth + 14;
+  const vw     = viewport.clientWidth;
   const offset = vw / 2 - cardW / 2 - carouselIdx * cardW;
   track.style.transform = `translateX(${offset}px)`;
 }
 
-window.addEventListener("resize", () => {
-  if (activeScreen === "home") applyCarouselTransform();
-});
+window.addEventListener("resize", () => { if (activeScreen === "home") applyCarouselTransform(); });
 
-// ─── BIND GLOBAL UI ────────────────────────────
+// ─── BIND UI ───────────────────────────────────
 function bindUIEvents() {
-  // Carousel arrows
   document.getElementById("arrow-prev").addEventListener("click", () => setCarouselIdx(carouselIdx - 1));
   document.getElementById("arrow-next").addEventListener("click", () => setCarouselIdx(carouselIdx + 1));
+  document.getElementById("btn-theme").addEventListener("click", toggleTheme);
 
-  // Keyboard arrow keys for carousel
   document.addEventListener("keydown", e => {
     if (activeScreen === "home") {
       if (e.key === "ArrowLeft")  setCarouselIdx(carouselIdx - 1);
       if (e.key === "ArrowRight") setCarouselIdx(carouselIdx + 1);
-      if (e.key === "Enter" || e.key === " ") openModeModal(MAP_DEFS[carouselIdx]);
+      if (e.key === "Enter")      openModeModal(MAP_DEFS[carouselIdx]);
     }
     if (activeScreen === "map" && Game.active && Game.mode === "capitals" && e.key === "Enter") {
       submitCapitalAnswer();
@@ -128,9 +169,8 @@ function bindUIEvents() {
 
   // Touch swipe for carousel
   let touchStartX = 0;
-  const vp = document.querySelector(".carousel-viewport");
-  vp.addEventListener("touchstart", e => { touchStartX = e.touches[0].clientX; }, { passive: true });
-  vp.addEventListener("touchend", e => {
+  document.querySelector(".carousel-viewport").addEventListener("touchstart", e => { touchStartX = e.touches[0].clientX; }, { passive: true });
+  document.querySelector(".carousel-viewport").addEventListener("touchend",   e => {
     const dx = touchStartX - e.changedTouches[0].clientX;
     if (Math.abs(dx) > 40) setCarouselIdx(carouselIdx + (dx > 0 ? 1 : -1));
   });
@@ -138,18 +178,16 @@ function bindUIEvents() {
   // Mode modal
   document.getElementById("mode-modal-close").addEventListener("click", closeModeModal);
   document.getElementById("btn-study").addEventListener("click", () => startStudy());
-  document.getElementById("btn-play").addEventListener("click", () => showPlayOptions());
+  document.getElementById("btn-play").addEventListener("click", showPlayOptions);
   document.getElementById("mode-stage-back").addEventListener("click", () => {
     document.getElementById("mode-stage-1").classList.remove("hidden");
     document.getElementById("mode-stage-2").classList.add("hidden");
   });
-
-  // Game mode buttons
   document.getElementById("btn-mode-countries").addEventListener("click", () => startGame("countries"));
   document.getElementById("btn-mode-capitals") .addEventListener("click", () => startGame("capitals"));
   document.getElementById("btn-mode-flags")    .addEventListener("click", () => startGame("flags"));
 
-  // Reset study button
+  // Reset study
   document.getElementById("btn-reset-study").addEventListener("click", () => {
     if (!selectedMapDef) return;
     Stats.resetStudied(selectedMapDef.id);
@@ -158,16 +196,13 @@ function bindUIEvents() {
     showToast("Study progress reset", "info");
   });
 
-  // Map back button
+  // Map back
   document.getElementById("map-back-btn").addEventListener("click", () => {
     if (Game.active) {
       if (confirm("Leave the game? Your progress will be lost.")) {
-        Game.stop();
-        goHome();
+        Game.stop(); goHome();
       }
-    } else {
-      goHome();
-    }
+    } else { goHome(); }
   });
 
   // Study panel
@@ -179,13 +214,11 @@ function bindUIEvents() {
     document.getElementById("info-modal").classList.add("hidden");
   });
 
-  // Capital input submit
+  // Capital input
   document.getElementById("gp-submit").addEventListener("click", submitCapitalAnswer);
-  document.getElementById("gp-input").addEventListener("keydown", e => {
-    if (e.key === "Enter") submitCapitalAnswer();
-  });
+  document.getElementById("gp-input").addEventListener("keydown", e => { if (e.key === "Enter") submitCapitalAnswer(); });
 
-  // Game over modal
+  // Game over
   document.getElementById("btn-play-again").addEventListener("click", () => {
     document.getElementById("gameover-modal").classList.add("hidden");
     if (selectedMapDef && currentMode) startGame(currentMode);
@@ -195,19 +228,10 @@ function bindUIEvents() {
     goHome();
   });
 
-  // Close overlays on backdrop click
-  document.getElementById("mode-modal").addEventListener("click", e => {
-    if (e.target === e.currentTarget) closeModeModal();
-  });
-  document.getElementById("info-modal").addEventListener("click", e => {
-    if (e.target === e.currentTarget) document.getElementById("info-modal").classList.add("hidden");
-  });
-  document.getElementById("gameover-modal").addEventListener("click", e => {
-    if (e.target === e.currentTarget) {
-      document.getElementById("gameover-modal").classList.add("hidden");
-      goHome();
-    }
-  });
+  // Backdrop close
+  document.getElementById("mode-modal")    .addEventListener("click", e => { if (e.target === e.currentTarget) closeModeModal(); });
+  document.getElementById("info-modal")    .addEventListener("click", e => { if (e.target === e.currentTarget) document.getElementById("info-modal").classList.add("hidden"); });
+  document.getElementById("gameover-modal").addEventListener("click", e => { if (e.target === e.currentTarget) { document.getElementById("gameover-modal").classList.add("hidden"); goHome(); } });
 }
 
 // ─── NAVIGATION ────────────────────────────────
@@ -216,59 +240,47 @@ function goHome() {
   document.getElementById("study-panel").classList.add("hidden");
   document.getElementById("game-panel").classList.add("hidden");
   document.getElementById("game-hud").classList.add("hidden");
-  buildCarousel(); // refresh progress badges
+  buildCarousel();
   showScreen("home");
 }
 
 // ─── MODE MODAL ────────────────────────────────
 function openModeModal(mapDef) {
   selectedMapDef = mapDef;
-
   document.getElementById("mode-modal-header").innerHTML = `
-    <span style="font-size:3rem">${mapDef.icon}</span>
+    <div class="mode-map-icon">${mapDef.icon}</div>
     <h2>${mapDef.label}</h2>
-    <p>${entityCountForMap(mapDef)} ${mapDef.isUSStates ? "states" : "countries"}</p>
-  `;
-
+    <p>${entityCountForMap(mapDef)} ${mapDef.isUSStates ? "states" : "countries"}</p>`;
   document.getElementById("mode-stage-1").classList.remove("hidden");
   document.getElementById("mode-stage-2").classList.add("hidden");
   document.getElementById("mode-modal").classList.remove("hidden");
 }
-
-function closeModeModal() {
-  document.getElementById("mode-modal").classList.add("hidden");
-}
-
+function closeModeModal() { document.getElementById("mode-modal").classList.add("hidden"); }
 function entityCountForMap(mapDef) {
   if (mapDef.isUSStates) return Object.keys(US_STATES).length;
   if (mapDef.id === "world") return Object.keys(COUNTRIES).length;
   return Object.values(COUNTRIES).filter(c => c.continent === mapDef.id).length;
 }
 
-// ─── STUDY MODE ────────────────────────────────
+// ─── STUDY ─────────────────────────────────────
 function startStudy() {
   closeModeModal();
   currentMode = "study";
   openMap(selectedMapDef, "study");
 }
-
 function showPlayOptions() {
   document.getElementById("mode-stage-1").classList.add("hidden");
   document.getElementById("mode-stage-2").classList.remove("hidden");
 }
 
-// ─── GAME START ────────────────────────────────
+// ─── GAME ──────────────────────────────────────
 function startGame(mode) {
   closeModeModal();
-  currentMode = mode;
-
-  // Don't show flags for US states
   if (mode === "flags" && selectedMapDef.isUSStates) {
-    showToast("Flags not available for U.S. States. Playing Countries mode.", "info", 3000);
+    showToast("Flags not available for U.S. States — using Countries mode", "info", 3000);
     mode = "countries";
-    currentMode = "countries";
   }
-
+  currentMode = mode;
   openMap(selectedMapDef, "game", mode);
 }
 
@@ -282,39 +294,30 @@ function openMap(mapDef, modeType, gameMode) {
   document.getElementById("gameover-modal").classList.add("hidden");
   document.getElementById("btn-reset-study").classList.toggle("hidden", modeType !== "study");
 
-  Renderer.renderMap(mapDef, (entityId) => {
-    handleEntityClick(entityId, modeType, mapDef);
-  }).then(() => {
-    if (modeType === "game") {
-      const entities = getEntitiesForMap(mapDef);
-      Game.start(mapDef.id, gameMode, entities);
-    } else if (modeType === "study") {
-      // Restore studied markers from saved progress
-      const studied = Stats.get().studiedEntities || {};
-      for (const id of Object.keys(studied)) {
-        Renderer.markStudied(id);
+  Renderer.renderMap(mapDef, (entityId) => handleEntityClick(entityId, modeType, mapDef))
+    .then(() => {
+      if (modeType === "game") {
+        const entities = getEntitiesForMap(mapDef);
+        Game.start(mapDef.id, gameMode, entities);
+      } else {
+        // Restore studied markers
+        const studied = Stats.get().studiedEntities || {};
+        for (const id of Object.keys(studied)) Renderer.markStudied(id);
       }
-    }
-  });
+    });
 }
 
 function getEntitiesForMap(mapDef) {
-  // Return list of entity ids (country numeric codes or state fips)
   const rendered = Renderer.getFeatureIds();
-  if (mapDef.isUSStates) {
-    return rendered.filter(id => US_STATES[id]);
-  } else {
-    return rendered.filter(id => COUNTRIES[id]);
-  }
+  return mapDef.isUSStates
+    ? rendered.filter(id => US_STATES[id])
+    : rendered.filter(id => COUNTRIES[id]);
 }
 
-// ─── ENTITY CLICK HANDLER ──────────────────────
+// ─── ENTITY CLICK ──────────────────────────────
 function handleEntityClick(entityId, modeType, mapDef) {
-  if (modeType === "study") {
-    showStudyPanel(entityId, mapDef);
-  } else if (modeType === "game") {
-    handleGameClick(entityId);
-  }
+  if (modeType === "study") showStudyPanel(entityId, mapDef);
+  else if (modeType === "game") handleGameClick(entityId);
 }
 
 // ─── STUDY PANEL ───────────────────────────────
@@ -327,7 +330,6 @@ function showStudyPanel(entityId, mapDef) {
   const panelOpen = !panel.classList.contains("hidden");
   const panelShowingThis = panel.dataset.entityId === String(entityId);
 
-  // Panel is open for this country → close it and un-dim
   if (panelOpen && panelShowingThis) {
     panel.classList.add("hidden");
     Stats.removeStudied(entityId, mapDef.id);
@@ -336,112 +338,79 @@ function showStudyPanel(entityId, mapDef) {
     return;
   }
 
-  // Save study visit and dim
-  Stats.recordStudy(entityId, mapDef.id);
+  // Record study + check mid-game trophies
+  const newTrophies = Stats.recordStudy(entityId, mapDef.id);
   Renderer.markStudied(entityId);
+  if (newTrophies.length) setTimeout(() => showTrophyPopup(newTrophies[0]), 200);
 
-  document.getElementById("study-name").textContent = data.name;
+  document.getElementById("study-name").textContent    = data.name;
   document.getElementById("study-capital").textContent = data.capital;
 
   const flagEl = document.getElementById("study-flag");
-  flagEl.style.display = "";          // always reset — onerror may have hidden it
-  flagEl.removeAttribute("src");      // clear before assigning to force reload
+  flagEl.style.display = "";
+  flagEl.removeAttribute("src");
   if (!isUS && data.iso2) {
     flagEl.src = flagUrl(data.iso2, 80);
-    flagEl.alt = data.name;
     flagEl.onerror = () => { flagEl.style.display = "none"; };
     flagEl.parentElement.style.display = "";
   } else {
     flagEl.parentElement.style.display = "none";
   }
 
-  // Store for More Info
-  document.getElementById("study-panel").dataset.entityId = entityId;
-  document.getElementById("study-panel").dataset.isUs = isUS;
-
-  document.getElementById("study-panel").classList.remove("hidden");
+  panel.dataset.entityId = entityId;
+  panel.dataset.isUs     = isUS;
+  panel.classList.remove("hidden");
 }
 
 function openMoreInfo() {
-  const panel = document.getElementById("study-panel");
+  const panel    = document.getElementById("study-panel");
   const entityId = panel.dataset.entityId;
-  const isUS = panel.dataset.isUs === "true";
-
-  const data = isUS ? getStateData(entityId) : getCountryData(entityId);
+  const isUS     = panel.dataset.isUs === "true";
+  const data     = isUS ? getStateData(entityId) : getCountryData(entityId);
   if (!data) return;
 
-  document.getElementById("info-modal-name").textContent = data.name;
+  document.getElementById("info-modal-name").textContent    = data.name;
   document.getElementById("info-modal-capital").textContent = data.capital;
 
   const flagEl = document.getElementById("info-modal-flag");
   if (!isUS && data.iso2) {
     flagEl.src = flagUrl(data.iso2, 160);
-    flagEl.alt = data.name;
     flagEl.style.display = "";
-  } else {
-    flagEl.style.display = "none";
-  }
+  } else { flagEl.style.display = "none"; }
 
-  const body = document.getElementById("info-modal-body");
-  body.innerHTML = buildInfoBody(data, isUS);
-
+  document.getElementById("info-modal-body").innerHTML = buildInfoBody(data, isUS);
   document.getElementById("info-modal").classList.remove("hidden");
 }
 
 function buildInfoBody(data, isUS) {
   const chips = isUS
-    ? [
-        { label: "Capital",    value: data.capital },
-        { label: "State Code", value: data.abbr || "—" },
-      ]
-    : [
-        { label: "Capital",    value: data.capital },
-        { label: "Continent",  value: capitalize(data.continent) },
-      ];
-
+    ? [{ label:"Capital", value:data.capital }, { label:"Abbreviation", value:data.abbr || "—" }]
+    : [{ label:"Capital", value:data.capital }, { label:"Continent",    value:capitalize(data.continent) }];
   const chipsHtml = chips.map(c => `
     <div class="info-chip">
       <div class="info-chip-label">${c.label}</div>
       <div class="info-chip-value">${c.value}</div>
     </div>`).join("");
-
-  return `
-    <div class="info-grid">${chipsHtml}</div>
-    <div class="info-summary">${data.summary || "No additional information available."}</div>
-  `;
+  return `<div class="info-grid">${chipsHtml}</div><div class="info-summary">${data.summary || "No additional information available."}</div>`;
 }
-
 function capitalize(s) { return s ? s.charAt(0).toUpperCase() + s.slice(1) : ""; }
 
 // ─── GAME CLICK ────────────────────────────────
 function handleGameClick(entityId) {
   if (!Game.active) return;
-
   const result = Game.answerClick(entityId);
   if (!result) return;
-
-  if (result.correct) {
-    Renderer.highlightEntity(result.id, "correct");
-  } else if (result.showAnswer) {
-    Renderer.highlightEntity(result.answerId, "wrong");
-  }
-  // partial wrong: no highlight change
+  if (result.correct)    Renderer.highlightEntity(result.id, "correct");
+  else if (result.showAnswer) Renderer.highlightEntity(result.answerId, "wrong");
 }
 
 // ─── CAPITAL INPUT ─────────────────────────────
 function submitCapitalAnswer() {
   if (!Game.active || Game.mode !== "capitals") return;
-  const inp = document.getElementById("gp-input");
+  const inp  = document.getElementById("gp-input");
   const text = inp.value.trim();
   if (!text) return;
-
   const result = Game.answerText(text);
   if (!result) return;
-
-  if (result.correct) {
-    Renderer.highlightEntity(result.id, "correct");
-  }
+  if (result.correct) Renderer.highlightEntity(result.id, "correct");
 }
-
-// ─── KEYBOARD SHORTCUTS ────────────────────────
-// Already bound in bindUIEvents

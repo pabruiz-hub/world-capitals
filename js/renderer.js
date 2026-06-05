@@ -35,10 +35,11 @@ const Renderer = {
       .attr("viewBox", `0 0 ${width} ${height}`)
       .style("overflow", "hidden");
 
-    // Ocean background
+    // Ocean background — respect CSS theme variable
+    const oceanColor = getComputedStyle(document.documentElement).getPropertyValue("--map-ocean").trim() || "#0d1e3a";
     this.svg.append("rect")
       .attr("width", width).attr("height", height)
-      .attr("fill", "#0d1f3c");
+      .attr("fill", oceanColor);
 
     this.g = this.svg.append("g").attr("class", "map-group");
 

@@ -145,8 +145,7 @@ const Game = {
     const fb = document.getElementById("gp-feedback");
 
     if (correct) {
-      // Score: base + streak bonus + attempts bonus
-      const baseScore = 100;
+      const baseScore    = 100;
       const attemptBonus = this.attempts === 1 ? 50 : this.attempts === 2 ? 20 : 0;
       const streakBonus  = Math.min(this.streak * 10, 200);
       const pts = baseScore + attemptBonus + streakBonus;
@@ -155,6 +154,16 @@ const Game = {
       this.streak++;
       Stats.recordStreak(this.streak);
 
+      // Comeback trophy check
+      if (this.attempts === 3) {
+        const newT = Stats.recordComeback();
+        if (newT.length) showTrophyPopup(newT[0]);
+      }
+
+      // Mid-game trophy check after correct answer
+      const newTrophies = Stats.recordCorrectAnswer(this.mode);
+      if (newTrophies.length) setTimeout(() => showTrophyPopup(newTrophies[0]), 500);
+
       this.answered[this.current] = { correct: true };
 
       fb.className = "correct-fb";
@@ -162,13 +171,15 @@ const Game = {
       fb.classList.remove("hidden");
 
       document.getElementById("hud-score").textContent = this.score.toLocaleString();
+      updateNavScore();
+      updateNavLevel();
 
-      showToast(`✓ Correct! +${pts} pts`, "correct");
+      // Combo burst animation for streaks >= 3
+      if (this.streak >= 3) showComboBurst(this.streak);
 
-      setTimeout(() => {
-        fb.classList.add("hidden");
-        this._next();
-      }, 800);
+      showToast(`✓ +${pts} XP`, "correct");
+
+      setTimeout(() => { fb.classList.add("hidden"); this._next(); }, 800);
 
       return { correct: true, id: savedId, pts };
 
@@ -184,13 +195,15 @@ const Game = {
 
         const isUS = this.mapId === "us_states";
         const data = isUS ? getStateData(this.current) : getCountryData(this.current);
-        const correctName = data ? data.name : this.current;
+        const correctAnswer = this.mode === "capitals"
+          ? (data ? data.capital : "?")
+          : (data ? data.name : savedId);
 
         fb.className = "wrong-fb";
-        fb.textContent = `✗ The answer was: ${correctName}`;
+        fb.textContent = `✗ The answer was: ${correctAnswer}`;
         fb.classList.remove("hidden");
 
-        showToast(`✗ Answer: ${correctName}`, "wrong");
+        showToast(`✗ ${correctAnswer}`, "wrong");
 
         setTimeout(() => {
           fb.classList.add("hidden");
@@ -233,6 +246,9 @@ const Game = {
     for (const [id, res] of Object.entries(this.answered)) {
       entityResults[id] = res;
     }
+
+    updateNavScore();
+    updateNavLevel();
 
     const newTrophies = Stats.recordGame({
       mapId: this.mapId,
@@ -332,6 +348,17 @@ function normalizeAnswer(str) {
     .replace(/[^a-z0-9\s]/g, "")
     .replace(/\s+/g, " ")
     .trim();
+}
+
+function showComboBurst(streak) {
+  const labels = { 3:"🔥 x3", 5:"⚡ x5", 10:"💫 x10", 15:"🌪️ x15", 20:"👑 x20" };
+  const label = labels[streak] || (streak >= 3 ? `🔥 x${streak}` : null);
+  if (!label) return;
+  const el = document.createElement("div");
+  el.className = "combo-burst";
+  el.textContent = label;
+  const area = document.getElementById("map-area");
+  if (area) { area.appendChild(el); setTimeout(() => el.remove(), 900); }
 }
 
 function showToast(msg, type = "info", duration = 1800) {

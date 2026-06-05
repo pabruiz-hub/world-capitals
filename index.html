@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="en" data-theme="dark">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
@@ -13,6 +13,9 @@
 <body>
 <div id="app">
 
+  <!-- ─── XP PROGRESS BAR ─── -->
+  <div id="xp-bar-wrap"><div id="xp-bar-fill" style="width:0%"></div></div>
+
   <!-- ─── NAVBAR ─── -->
   <nav id="navbar">
     <div class="nav-logo" onclick="showScreen('home')">
@@ -20,6 +23,13 @@
       <span>World Capitals</span>
     </div>
     <div class="nav-right">
+      <div class="nav-streak hidden" id="nav-streak">
+        <span>🔥</span><span id="nav-streak-val">0</span>
+      </div>
+      <div class="nav-level" id="nav-level">
+        <i class="fas fa-star-of-life"></i>
+        <span id="nav-level-val">Lv 1</span>
+      </div>
       <button class="nav-btn" onclick="showScreen('stats')">
         <i class="fas fa-chart-bar"></i><span>Stats</span>
       </button>
@@ -27,9 +37,11 @@
         <i class="fas fa-trophy"></i><span>Trophies</span>
       </button>
       <div class="nav-score-badge">
-        <i class="fas fa-star"></i>
-        <span id="nav-score">0</span>
+        <i class="fas fa-star"></i><span id="nav-score">0</span>
       </div>
+      <button class="theme-toggle" id="btn-theme" title="Toggle theme">
+        <i class="fas fa-moon" id="theme-icon"></i>
+      </button>
     </div>
   </nav>
 
@@ -68,20 +80,13 @@
 
     <div id="map-area">
       <svg id="map-svg"></svg>
-
-      <!-- Loading -->
-      <div id="map-loading">
-        <div class="spinner"></div>
-        <p>Loading map…</p>
-      </div>
+      <div id="map-loading"><div class="spinner"></div><p>Loading map…</p></div>
 
       <!-- Study Panel -->
       <div id="study-panel" class="hidden">
         <button class="panel-close" id="study-close"><i class="fas fa-times"></i></button>
         <div class="study-inner">
-          <div class="study-flag-wrap">
-            <img id="study-flag" src="" alt="Flag">
-          </div>
+          <div class="study-flag-wrap"><img id="study-flag" src="" alt="Flag"></div>
           <div class="study-info">
             <h3 id="study-name"></h3>
             <p class="study-capital"><i class="fas fa-star cap-star"></i><span id="study-capital"></span></p>
@@ -92,21 +97,19 @@
 
       <!-- Game Panel -->
       <div id="game-panel" class="hidden">
-        <div id="game-panel-inner">
-          <div class="gp-header">
-            <span id="gp-mode-badge" class="mode-badge"></span>
-            <div class="gp-lives" id="gp-lives">
-              <i class="fas fa-heart"></i><i class="fas fa-heart"></i><i class="fas fa-heart"></i>
-            </div>
+        <div class="gp-header">
+          <span id="gp-mode-badge" class="mode-badge"></span>
+          <div class="gp-lives" id="gp-lives">
+            <i class="fas fa-heart"></i><i class="fas fa-heart"></i><i class="fas fa-heart"></i>
           </div>
-          <div id="gp-flag-wrap" class="hidden"><img id="gp-flag" src="" alt=""></div>
-          <p id="gp-question"></p>
-          <div id="gp-input-wrap" class="hidden">
-            <input type="text" id="gp-input" placeholder="Type the capital…" autocomplete="off" autocorrect="off" spellcheck="false">
-            <button id="gp-submit"><i class="fas fa-check"></i></button>
-          </div>
-          <div id="gp-feedback" class="hidden"></div>
         </div>
+        <div id="gp-flag-wrap" class="hidden"><img id="gp-flag" src="" alt=""></div>
+        <p id="gp-question"></p>
+        <div id="gp-input-wrap" class="hidden">
+          <input type="text" id="gp-input" placeholder="Type the capital…" autocomplete="off" autocorrect="off" spellcheck="false">
+          <button id="gp-submit"><i class="fas fa-check"></i></button>
+        </div>
+        <div id="gp-feedback" class="hidden"></div>
       </div>
 
       <!-- More Info Modal -->
@@ -149,8 +152,6 @@
     <div class="overlay-card mode-card">
       <button class="panel-close overlay-close" id="mode-modal-close"><i class="fas fa-times"></i></button>
       <div id="mode-modal-header"></div>
-
-      <!-- Stage 1: Study / Play -->
       <div id="mode-stage-1">
         <div class="mode-grid">
           <button class="mode-big-btn study-big" id="btn-study">
@@ -165,25 +166,20 @@
           </button>
         </div>
       </div>
-
-      <!-- Stage 2: Game type -->
       <div id="mode-stage-2" class="hidden">
         <h3>Choose Game Mode</h3>
         <div class="game-type-grid">
           <button class="game-type-btn" id="btn-mode-countries">
             <i class="fas fa-map-marked-alt"></i>
-            <strong>Countries</strong>
-            <small>Find the country on the map</small>
+            <div><strong>Countries</strong><small>Find the country on the map</small></div>
           </button>
           <button class="game-type-btn" id="btn-mode-capitals">
             <i class="fas fa-city"></i>
-            <strong>Capitals</strong>
-            <small>Type the capital city</small>
+            <div><strong>Capitals</strong><small>Type the capital city</small></div>
           </button>
           <button class="game-type-btn" id="btn-mode-flags">
             <i class="fas fa-flag"></i>
-            <strong>Flags</strong>
-            <small>Identify the country by flag</small>
+            <div><strong>Flags</strong><small>Identify the country by flag</small></div>
           </button>
         </div>
         <button class="link-btn" id="mode-stage-back"><i class="fas fa-arrow-left"></i> Back</button>
@@ -197,17 +193,26 @@
       <div id="gameover-header"></div>
       <div id="gameover-stats"></div>
       <div class="gameover-actions">
-        <button class="btn-primary" id="btn-play-again"><i class="fas fa-redo"></i> Play Again</button>
+        <button class="btn-primary"   id="btn-play-again"><i class="fas fa-redo"></i> Play Again</button>
         <button class="btn-secondary" id="btn-go-home"><i class="fas fa-home"></i> Home</button>
       </div>
+    </div>
+  </div>
+
+  <!-- ─── TROPHY POPUP ─── -->
+  <div id="trophy-popup" class="hidden">
+    <div class="trophy-popup-icon" id="trophy-popup-icon"></div>
+    <div class="trophy-popup-text">
+      <div class="trophy-popup-label">🏆 Trophy Unlocked!</div>
+      <div class="trophy-popup-name" id="trophy-popup-name"></div>
+      <div class="trophy-popup-desc" id="trophy-popup-desc"></div>
     </div>
   </div>
 
   <!-- ─── TOAST ─── -->
   <div id="toast" class="hidden"></div>
 
-</div><!-- #app -->
-
+</div>
 <script src="js/data.js"></script>
 <script src="js/stats.js"></script>
 <script src="js/game.js"></script>
