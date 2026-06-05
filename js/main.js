@@ -323,12 +323,16 @@ function showStudyPanel(entityId, mapDef) {
   const data = isUS ? getStateData(entityId) : getCountryData(entityId);
   if (!data) return;
 
-  // Toggle: if already studied, un-dim and remove; otherwise mark as studied
-  if (Stats.isStudied(entityId)) {
+  const panel = document.getElementById("study-panel");
+  const panelOpen = !panel.classList.contains("hidden");
+  const panelShowingThis = panel.dataset.entityId === String(entityId);
+
+  // Panel is open for this country → close it and un-dim
+  if (panelOpen && panelShowingThis) {
+    panel.classList.add("hidden");
     Stats.removeStudied(entityId, mapDef.id);
     const el = document.getElementById(`country-${entityId}`);
     if (el) el.classList.remove("studied");
-    document.getElementById("study-panel").classList.add("hidden");
     return;
   }
 
