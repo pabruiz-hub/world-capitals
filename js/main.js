@@ -322,9 +322,12 @@ function showStudyPanel(entityId, mapDef) {
   document.getElementById("study-capital").textContent = data.capital;
 
   const flagEl = document.getElementById("study-flag");
+  flagEl.style.display = "";          // always reset — onerror may have hidden it
+  flagEl.removeAttribute("src");      // clear before assigning to force reload
   if (!isUS && data.iso2) {
     flagEl.src = flagUrl(data.iso2, 80);
     flagEl.alt = data.name;
+    flagEl.onerror = () => { flagEl.style.display = "none"; };
     flagEl.parentElement.style.display = "";
   } else {
     flagEl.parentElement.style.display = "none";
