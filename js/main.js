@@ -323,9 +323,17 @@ function showStudyPanel(entityId, mapDef) {
   const data = isUS ? getStateData(entityId) : getCountryData(entityId);
   if (!data) return;
 
-  // Save study visit
+  // Toggle: if already studied, un-dim and remove; otherwise mark as studied
+  if (Stats.isStudied(entityId)) {
+    Stats.removeStudied(entityId, mapDef.id);
+    const el = document.getElementById(`country-${entityId}`);
+    if (el) el.classList.remove("studied");
+    document.getElementById("study-panel").classList.add("hidden");
+    return;
+  }
+
+  // Save study visit and dim
   Stats.recordStudy(entityId, mapDef.id);
-  // Dim the visited country slightly to show it's been studied
   Renderer.markStudied(entityId);
 
   document.getElementById("study-name").textContent = data.name;

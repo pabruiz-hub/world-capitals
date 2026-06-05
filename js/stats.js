@@ -133,6 +133,18 @@ const Stats = {
     this.save();
   },
 
+  // Remove a single studied entity
+  removeStudied(entityId, mapId) {
+    const s = this.get();
+    if (s.studiedEntities) delete s.studiedEntities[entityId];
+    this._recalcLearning(mapId, s);
+    this.save();
+  },
+
+  isStudied(entityId) {
+    return !!(this.get().studiedEntities || {})[entityId];
+  },
+
   // Remove all studied markers for a given map and recalculate
   resetStudied(mapId) {
     const s = this.get();
