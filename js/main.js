@@ -1,11 +1,21 @@
 // ═══════════════════════════════════════════════
-//  WORLD CAPITALS — App Controller
+//  WORLD CAPITALS — Main App Controller
 // ═══════════════════════════════════════════════
 
 let activeScreen   = "home";
 let selectedMapDef = null;
 let currentMode    = null;
 let trophyTimer    = null;
+
+// Card gradient map (matches CSS --grad-* variables)
+const CARD_GRAD = {
+  world:    "var(--grad-world)",
+  europe:   "var(--grad-europe)",
+  africa:   "var(--grad-africa)",
+  asia:     "var(--grad-asia)",
+  america:  "var(--grad-america)",
+  us_states:"var(--grad-us)",
+};
 
 // ─── INIT ──────────────────────────────────────
 document.addEventListener("DOMContentLoaded", () => {
@@ -19,7 +29,7 @@ document.addEventListener("DOMContentLoaded", () => {
   showScreen("home");
 });
 
-// ─── SCREENS ───────────────────────────────────
+// ─── SCREEN MANAGER ────────────────────────────
 function showScreen(name) {
   document.querySelectorAll(".screen").forEach(s => s.classList.remove("active"));
   const el = document.getElementById(`screen-${name}`);
@@ -83,59 +93,133 @@ function showTrophyPopup(trophy) {
   document.getElementById("trophy-popup-desc").textContent = trophy.desc;
   trophyTimer = setTimeout(() => {
     el.classList.add("hiding");
-    setTimeout(() => el.classList.add("hidden"), 320);
+    setTimeout(() => el.classList.add("hidden"), 330);
   }, 3500);
 }
 
-// ─── MAP GRID ──────────────────────────────────
+// ─── MAP GRID (replaces carousel) ──────────────
 function buildMapGrid() {
   const grid = document.getElementById("map-grid");
-  if (!grid) return;
   grid.innerHTML = "";
 
-  MAP_DEFS.forEach((def) => {
+  MAP_DEFS.forEach((def, i) => {
     const pct  = Stats.getMapLearning(def.id);
-    const card = document.createElement("div");
-    card.className   = "mg-card";
-    card.dataset.id  = def.id;
-    card.style.cursor = "pointer";
+    const grad = CARD_GRAD[def.id] || CARD_GRAD.world;
 
+    const card = document.createElement("div");
+    card.className = "mg-card";
+    card.setAttribute("tabindex", "0");
+    card.setAttribute("aria-label", def.label);
     card.innerHTML = `
-      <div class="mg-bg" style="background:${_cardGrad(def.id)}"></div>
-      <div class="mg-map" id="mgmap-${def.id}"></div>
-      <div class="mg-emoji" id="mgemoji-${def.id}">${def.icon}</div>
+      <div class="mg-bg" style="background:${grad}"></div>
+      <div class="mg-map" id="mg-map-${i}"></div>
+      <div class="mg-emoji">${def.icon}</div>
       <div class="mg-body">
         <div class="mg-label">${def.label}</div>
         <div class="mg-progress-bar">
           <div class="mg-progress-fill" style="width:${pct}%"></div>
         </div>
-        <div class="mg-sub">${pct > 0 ? `${pct}% learned` : "Tap to start"}</div>
+        <div class="mg-sub">${pct > 0 ? `${pct}% learned` : "Not started"}</div>
       </div>`;
 
     card.addEventListener("click", () => openModeModal(def));
+    card.addEventListener("keydown", e => { if (e.key === "Enter" || e.key === " ") openModeModal(def); });
     grid.appendChild(card);
 
-    // Load mini map async
-    const mapEl  = document.getElementById(`mgmap-${def.id}`);
-    const emoEl  = document.getElementById(`mgemoji-${def.id}`);
-    setTimeout(() => {
-      renderCardMiniMap(def, mapEl).then(() => {
-        if (emoEl) emoEl.style.opacity = "0";
-      }).catch(() => {});
-    }, 0);
+    // Load mini map preview asynchronously
+    const mapEl = document.getElementById(`mg-map-${i}`);
+    setTimeout(() => renderCardMiniMap(def, mapEl).catch(() => {}), i * 120);
   });
 }
 
-function _cardGrad(id) {
-  const g = {
-    world:    "linear-gradient(145deg,#0f2444,#1e4080)",
-    europe:   "linear-gradient(145deg,#2d0a5e,#6d28d9)",
-    africa:   "linear-gradient(145deg,#431407,#c2410c)",
-    asia:     "linear-gradient(145deg,#450a0a,#dc2626)",
-    america:  "linear-gradient(145deg,#052e16,#047857)",
-    us_states:"linear-gradient(145deg,#0c1461,#1d4ed8)",
-  };
-  return g[id] || "linear-gradient(145deg,#1a1a2e,#16213e)";
+// ─── BIND EVENTS ───────────────────────────────
+function bindUIEvents() {
+  document.getElementById("btn-theme").addEventListener("click", toggleTheme);
+
+  document.addEventListener("keydown", e => {
+    if (activeScreen === "map" && Game.active && Game.mode === "capitals" && e.key === "Enter") {
+      submitCapitalAnswer();
+    }
+    if (e.key === "Escape") {
+      document.getElementById("mode-modal").classList.add("hidden");
+      document.getElementById("info-modal").classList.add("hidden");
+    }
+  });
+
+  // Mode modal
+  document.getElementById("mode-modal-close").addEventListener("click", closeModeModal);
+  document.getElementById("btn-study").addEventListener("click", startStudy);
+  document.getElementById("btn-play").addEventListener("click", showPlayOptions);
+  document.getElementById("mode-stage-back").addEventListener("click", () => {
+    document.getElementById("mode-stage-1").classList.remove("hidden");
+    document.getElementById("mode-stage-2").classList.add("hidden");
+  });
+  document.getElementById("btn-mode-countries").addEventListener("click", () => startGame("countries"));
+  document.getElementById("btn-mode-capitals") .addEventListener("click", () => startGame("capitals"));
+  document.getElementById("btn-mode-flags")    .addEventListener("click", () => startGame("flags"));
+
+  // Reset study
+  document.getElementById("btn-reset-study").addEventListener("click", () => {
+    if (!selectedMapDef) return;
+    Stats.resetStudied(selectedMapDef.id);
+    Renderer.svg && Renderer.svg.selectAll(".country-path, .us-state-path").classed("studied", false);
+    document.getElementById("study-panel").classList.add("hidden");
+    showToast("Study progress reset", "info");
+  });
+
+  // Map back
+  document.getElementById("map-back-btn").addEventListener("click", () => {
+    if (Game.active) {
+      if (confirm("Leave the game? Your progress will be lost.")) {
+        Game.stop(); goHome();
+      }
+    } else { goHome(); }
+  });
+
+  // Study panel
+  document.getElementById("study-close").addEventListener("click", () =>
+    document.getElementById("study-panel").classList.add("hidden")
+  );
+  document.getElementById("btn-more-info").addEventListener("click", openMoreInfo);
+  document.getElementById("info-modal-close").addEventListener("click", () =>
+    document.getElementById("info-modal").classList.add("hidden")
+  );
+
+  // Capital input
+  document.getElementById("gp-submit").addEventListener("click", submitCapitalAnswer);
+  document.getElementById("gp-input").addEventListener("keydown", e => {
+    if (e.key === "Enter") submitCapitalAnswer();
+  });
+
+  // Game over
+  document.getElementById("btn-play-again").addEventListener("click", () => {
+    document.getElementById("gameover-modal").classList.add("hidden");
+    if (selectedMapDef && currentMode) startGame(currentMode);
+  });
+  document.getElementById("btn-go-home").addEventListener("click", () => {
+    document.getElementById("gameover-modal").classList.add("hidden");
+    goHome();
+  });
+
+  // Backdrop dismiss
+  ["mode-modal", "info-modal", "gameover-modal"].forEach(id => {
+    document.getElementById(id).addEventListener("click", e => {
+      if (e.target === e.currentTarget) {
+        e.currentTarget.classList.add("hidden");
+        if (id === "gameover-modal") goHome();
+      }
+    });
+  });
+}
+
+// ─── NAVIGATION ────────────────────────────────
+function goHome() {
+  Renderer.resetAllHighlights && Renderer.resetAllHighlights();
+  document.getElementById("study-panel").classList.add("hidden");
+  document.getElementById("game-panel").classList.add("hidden");
+  document.getElementById("game-hud").classList.add("hidden");
+  buildMapGrid();
+  showScreen("home");
 }
 
 // ─── MODE MODAL ────────────────────────────────
@@ -149,88 +233,20 @@ function openModeModal(mapDef) {
   document.getElementById("mode-stage-2").classList.add("hidden");
   document.getElementById("mode-modal").classList.remove("hidden");
 }
-function closeModeModal() { document.getElementById("mode-modal").classList.add("hidden"); }
+function closeModeModal() {
+  document.getElementById("mode-modal").classList.add("hidden");
+}
 function entityCountForMap(mapDef) {
   if (mapDef.isUSStates) return Object.keys(US_STATES).length;
   if (mapDef.id === "world") return Object.keys(COUNTRIES).length;
   return Object.values(COUNTRIES).filter(c => c.continent === mapDef.id).length;
 }
 
-// ─── BIND UI ───────────────────────────────────
-function bindUIEvents() {
-  document.getElementById("btn-theme").addEventListener("click", toggleTheme);
-
-  document.addEventListener("keydown", e => {
-    if (activeScreen === "map" && Game.active && Game.mode === "capitals" && e.key === "Enter") {
-      submitCapitalAnswer();
-    }
-  });
-
-  document.getElementById("mode-modal-close").addEventListener("click", closeModeModal);
-  document.getElementById("btn-study").addEventListener("click", () => startStudy());
-  document.getElementById("btn-play").addEventListener("click", showPlayOptions);
-  document.getElementById("mode-stage-back").addEventListener("click", () => {
-    document.getElementById("mode-stage-1").classList.remove("hidden");
-    document.getElementById("mode-stage-2").classList.add("hidden");
-  });
-  document.getElementById("btn-mode-countries").addEventListener("click", () => startGame("countries"));
-  document.getElementById("btn-mode-capitals") .addEventListener("click", () => startGame("capitals"));
-  document.getElementById("btn-mode-flags")    .addEventListener("click", () => startGame("flags"));
-
-  document.getElementById("btn-reset-study").addEventListener("click", () => {
-    if (!selectedMapDef) return;
-    Stats.resetStudied(selectedMapDef.id);
-    Renderer.svg.selectAll(".country-path, .us-state-path").classed("studied", false);
-    document.getElementById("study-panel").classList.add("hidden");
-    showToast("Study progress reset", "info");
-  });
-
-  document.getElementById("map-back-btn").addEventListener("click", () => {
-    if (Game.active) {
-      if (confirm("Leave the game? Progress will be lost.")) { Game.stop(); goHome(); }
-    } else { goHome(); }
-  });
-
-  document.getElementById("study-close").addEventListener("click", () => {
-    document.getElementById("study-panel").classList.add("hidden");
-  });
-  document.getElementById("btn-more-info").addEventListener("click", openMoreInfo);
-  document.getElementById("info-modal-close").addEventListener("click", () => {
-    document.getElementById("info-modal").classList.add("hidden");
-  });
-
-  document.getElementById("gp-submit").addEventListener("click", submitCapitalAnswer);
-  document.getElementById("gp-input").addEventListener("keydown", e => {
-    if (e.key === "Enter") submitCapitalAnswer();
-  });
-
-  document.getElementById("btn-play-again").addEventListener("click", () => {
-    document.getElementById("gameover-modal").classList.add("hidden");
-    if (selectedMapDef && currentMode) startGame(currentMode);
-  });
-  document.getElementById("btn-go-home").addEventListener("click", () => {
-    document.getElementById("gameover-modal").classList.add("hidden");
-    goHome();
-  });
-
-  document.getElementById("mode-modal")    .addEventListener("click", e => { if (e.target === e.currentTarget) closeModeModal(); });
-  document.getElementById("info-modal")    .addEventListener("click", e => { if (e.target === e.currentTarget) document.getElementById("info-modal").classList.add("hidden"); });
-  document.getElementById("gameover-modal").addEventListener("click", e => { if (e.target === e.currentTarget) { document.getElementById("gameover-modal").classList.add("hidden"); goHome(); } });
-}
-
-// ─── NAVIGATION ────────────────────────────────
-function goHome() {
-  Renderer.resetAllHighlights?.();
-  document.getElementById("study-panel").classList.add("hidden");
-  document.getElementById("game-panel").classList.add("hidden");
-  document.getElementById("game-hud").classList.add("hidden");
-  buildMapGrid();
-  showScreen("home");
-}
-
 // ─── STUDY / PLAY ──────────────────────────────
 function startStudy() {
-  closeModeModal(); currentMode = "study"; openMap(selectedMapDef, "study");
+  closeModeModal();
+  currentMode = "study";
+  openMap(selectedMapDef, "study");
 }
 function showPlayOptions() {
   document.getElementById("mode-stage-1").classList.add("hidden");
@@ -239,7 +255,7 @@ function showPlayOptions() {
 function startGame(mode) {
   closeModeModal();
   if (mode === "flags" && selectedMapDef.isUSStates) {
-    showToast("Flags unavailable for U.S. States — using Countries mode", "info", 3000);
+    showToast("Flags not available for U.S. States — using Countries mode", "info", 3000);
     mode = "countries";
   }
   currentMode = mode;
@@ -250,23 +266,24 @@ function startGame(mode) {
 function openMap(mapDef, modeType, gameMode) {
   showScreen("map");
   document.getElementById("map-title-label").textContent = mapDef.label;
-  document.getElementById("study-panel").classList.add("hidden");
-  document.getElementById("game-panel").classList.add("hidden");
-  document.getElementById("game-hud").classList.add("hidden");
-  document.getElementById("gameover-modal").classList.add("hidden");
-  document.getElementById("btn-reset-study").classList.toggle("hidden", modeType !== "study");
+  ["study-panel","game-panel","game-hud","gameover-modal"].forEach(id =>
+    document.getElementById(id).classList.add("hidden")
+  );
+  document.getElementById("btn-reset-study")
+    .classList.toggle("hidden", modeType !== "study");
 
-  Renderer.renderMap(mapDef, (entityId) => handleEntityClick(entityId, modeType, mapDef))
+  Renderer.renderMap(mapDef, id => handleEntityClick(id, modeType, mapDef))
     .then(() => {
       if (modeType === "game") {
-        const entities = getEntitiesForMap(mapDef);
-        Game.start(mapDef.id, gameMode, entities);
+        Game.start(mapDef.id, gameMode, getEntitiesForMap(mapDef));
       } else {
+        // Restore study markers from saved progress
         const studied = Stats.get().studiedEntities || {};
-        for (const id of Object.keys(studied)) Renderer.markStudied(id);
+        Object.keys(studied).forEach(id => Renderer.markStudied(id));
       }
     });
 }
+
 function getEntitiesForMap(mapDef) {
   const rendered = Renderer.getFeatureIds();
   return mapDef.isUSStates
@@ -286,17 +303,20 @@ function showStudyPanel(entityId, mapDef) {
   const data = isUS ? getStateData(entityId) : getCountryData(entityId);
   if (!data) return;
 
-  const panel          = document.getElementById("study-panel");
-  const panelOpen      = !panel.classList.contains("hidden");
-  const panelShowsThis = panel.dataset.entityId === String(entityId);
+  const panel = document.getElementById("study-panel");
+  const isOpen = !panel.classList.contains("hidden");
+  const showingThis = panel.dataset.entityId === String(entityId);
 
-  if (panelOpen && panelShowsThis) {
+  // Second click on same country → close + un-dim
+  if (isOpen && showingThis) {
     panel.classList.add("hidden");
     Stats.removeStudied(entityId, mapDef.id);
-    document.getElementById(`country-${entityId}`)?.classList.remove("studied");
+    const el = document.getElementById(`country-${entityId}`);
+    if (el) el.classList.remove("studied");
     return;
   }
 
+  // New country click
   const newTrophies = Stats.recordStudy(entityId, mapDef.id);
   Renderer.markStudied(entityId);
   if (newTrophies.length) setTimeout(() => showTrophyPopup(newTrophies[0]), 200);
@@ -308,7 +328,7 @@ function showStudyPanel(entityId, mapDef) {
   flagEl.style.display = "";
   flagEl.removeAttribute("src");
   if (!isUS && data.iso2) {
-    flagEl.src    = flagUrl(data.iso2, 80);
+    flagEl.src = flagUrl(data.iso2, 80);
     flagEl.onerror = () => { flagEl.style.display = "none"; };
     flagEl.parentElement.style.display = "";
   } else {
@@ -329,19 +349,27 @@ function openMoreInfo() {
 
   document.getElementById("info-modal-name").textContent    = data.name;
   document.getElementById("info-modal-capital").textContent = data.capital;
+
   const flagEl = document.getElementById("info-modal-flag");
-  if (!isUS && data.iso2) { flagEl.src = flagUrl(data.iso2, 160); flagEl.style.display = ""; }
-  else flagEl.style.display = "none";
+  if (!isUS && data.iso2) {
+    flagEl.src = flagUrl(data.iso2, 160);
+    flagEl.style.display = "";
+  } else { flagEl.style.display = "none"; }
 
   document.getElementById("info-modal-body").innerHTML = buildInfoBody(data, isUS);
   document.getElementById("info-modal").classList.remove("hidden");
 }
+
 function buildInfoBody(data, isUS) {
   const chips = isUS
-    ? [{ label:"Capital", value:data.capital }, { label:"Code", value:data.abbr || "—" }]
+    ? [{ label:"Capital", value:data.capital }, { label:"Abbreviation", value:data.abbr || "—" }]
     : [{ label:"Capital", value:data.capital }, { label:"Continent", value:capitalize(data.continent) }];
-  const html = chips.map(c => `<div class="info-chip"><div class="info-chip-label">${c.label}</div><div class="info-chip-value">${c.value}</div></div>`).join("");
-  return `<div class="info-grid">${html}</div><div class="info-summary">${data.summary || "No additional information available."}</div>`;
+  const chipsHtml = chips.map(c => `
+    <div class="info-chip">
+      <div class="info-chip-label">${c.label}</div>
+      <div class="info-chip-value">${c.value}</div>
+    </div>`).join("");
+  return `<div class="info-grid">${chipsHtml}</div><div class="info-summary">${data.summary || "No additional information available."}</div>`;
 }
 function capitalize(s) { return s ? s.charAt(0).toUpperCase() + s.slice(1) : ""; }
 
@@ -353,10 +381,12 @@ function handleGameClick(entityId) {
   if (result.correct)         Renderer.highlightEntity(result.id, "correct");
   else if (result.showAnswer) Renderer.highlightEntity(result.answerId, "wrong");
 }
+
 function submitCapitalAnswer() {
   if (!Game.active || Game.mode !== "capitals") return;
-  const inp = document.getElementById("gp-input");
-  if (!inp.value.trim()) return;
-  const result = Game.answerText(inp.value.trim());
+  const inp  = document.getElementById("gp-input");
+  const text = inp.value.trim();
+  if (!text) return;
+  const result = Game.answerText(text);
   if (result?.correct) Renderer.highlightEntity(result.id, "correct");
 }

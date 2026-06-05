@@ -263,14 +263,13 @@ const Renderer = {
   getFeatureIds() { return this.featuresInMap; }
 };
 
-// ─── MINI MAP for carousel cards ────────────────
-async function renderCardMiniMap(mapDef, containerEl) {
+// ─── MINI MAP for grid cards (.mg-map / .mg-emoji) ──
+async function renderCardMiniMap(mapDef, mapEl) {
   try {
     const topo        = await Renderer._loadTopo(mapDef.topoUrl);
     const obj         = topo.objects[mapDef.topoObject];
     const allFeatures = topojson.feature(topo, obj).features;
 
-    // For context maps, show world context in the card too
     const activeFeatures = mapDef.filter
       ? allFeatures.filter(f => mapDef.filter(String(f.id)))
       : allFeatures;
@@ -278,12 +277,13 @@ async function renderCardMiniMap(mapDef, containerEl) {
       ? allFeatures.filter(f => !mapDef.filter(String(f.id)))
       : [];
 
-    const W = containerEl.offsetWidth  || 185;
-    const H = containerEl.offsetHeight || 126;
+    // mapEl is the .mg-map div (position:absolute;inset:0 from CSS)
+    const W = mapEl.parentElement?.offsetWidth  || 200;
+    const H = mapEl.parentElement?.offsetHeight || 150;
 
-    const svg = d3.select(containerEl).append("svg")
-      .style("position","absolute").style("inset","0").style("z-index","2")
-      .attr("width", W).attr("height", H);
+    const svg = d3.select(mapEl).append("svg")
+      .attr("width", W).attr("height", H)
+      .style("display", "block");
 
     let projection;
     if (mapDef.isUSStates) projection = d3.geoAlbersUsa();
@@ -293,37 +293,38 @@ async function renderCardMiniMap(mapDef, containerEl) {
     projection.fitExtent([[3,3],[W-3,H-3]],
       { type:"FeatureCollection", features: activeFeatures });
 
-    const neighbors  = topojson.neighbors(obj.geometries);
-    const colorMap   = Renderer._greedyColor(activeFeatures, allFeatures, neighbors);
-    const dimColor   = getComputedStyle(document.documentElement).getPropertyValue("--map-dim").trim() || "#1e2035";
+    const neighbors = topojson.neighbors(obj.geometries);
+    const colorMap  = Renderer._greedyColor(activeFeatures, allFeatures, neighbors);
+    const dimColor  = getComputedStyle(document.documentElement)
+      .getPropertyValue("--map-dim").trim() || "#141e30";
 
-    // Background countries
+    // Dim background countries for context maps
     if (bgFeatures.length) {
       svg.append("g")
-        .style("opacity","0.4")
-        .style("filter","blur(0.8px)")
+        .style("opacity","0.35")
+        .style("filter","blur(0.7px)")
         .selectAll("path")
         .data(bgFeatures)
         .join("path")
           .attr("d", pathGen)
           .style("fill", dimColor)
-          .attr("stroke","rgba(0,0,0,0.2)")
+          .attr("stroke","rgba(0,0,0,0.15)")
           .attr("stroke-width",0.3);
     }
 
-    // Active countries
-    svg.selectAll(".cp")
+    // Active region countries
+    svg.selectAll(".mcp")
       .data(activeFeatures)
       .join("path")
-        .attr("class","cp")
+        .attr("class","mcp")
         .attr("d", pathGen)
         .attr("fill", d => MAP_PALETTE[(colorMap[String(d.id)]||0) % MAP_PALETTE.length])
-        .attr("fill-opacity", 0.88)
-        .attr("stroke","rgba(0,0,0,0.45)")
+        .attr("fill-opacity", 0.9)
+        .attr("stroke","rgba(0,0,0,0.5)")
         .attr("stroke-width", 0.4);
 
-    // Hide emoji fallback
-    const emoji = containerEl.querySelector(".card-emoji-fallback");
-    if (emoji) emoji.style.display = "none";
-  } catch(e) { /* leave emoji */ }
+    // Hide sibling emoji once map renders
+    const emoji = mapEl.parentElement?.querySelector(".mg-emoji");
+    if (emoji) emoji.style.opacity = "0";
+  } catch(e) { /* leave emoji visible */ }
 }
