@@ -399,6 +399,28 @@ a      { color: inherit; text-decoration: none; }
 .back-btn:hover { color: var(--t0); background: var(--glass2); border-color: var(--border2); }
 .back-btn i { font-size: 0.72rem; }
 
+.reset-study-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 0 12px;
+  height: 32px;
+  border-radius: var(--r-xs);
+  font-size: 0.76rem;
+  font-weight: 600;
+  color: var(--t2);
+  border: 1px solid var(--border);
+  background: var(--glass);
+  transition: var(--t);
+  white-space: nowrap;
+}
+.reset-study-btn:hover {
+  color: var(--rose-l);
+  border-color: rgba(244,63,94,0.35);
+  background: rgba(244,63,94,0.08);
+}
+.reset-study-btn i { font-size: 0.72rem; }
+
 /* HUD */
 #game-hud {
   display: flex;

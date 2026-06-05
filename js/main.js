@@ -149,6 +149,15 @@ function bindUIEvents() {
   document.getElementById("btn-mode-capitals") .addEventListener("click", () => startGame("capitals"));
   document.getElementById("btn-mode-flags")    .addEventListener("click", () => startGame("flags"));
 
+  // Reset study button
+  document.getElementById("btn-reset-study").addEventListener("click", () => {
+    if (!selectedMapDef) return;
+    Stats.resetStudied(selectedMapDef.id);
+    Renderer.svg.selectAll(".country-path, .us-state-path").classed("studied", false);
+    document.getElementById("study-panel").classList.add("hidden");
+    showToast("Study progress reset", "info");
+  });
+
   // Map back button
   document.getElementById("map-back-btn").addEventListener("click", () => {
     if (Game.active) {
@@ -271,6 +280,7 @@ function openMap(mapDef, modeType, gameMode) {
   document.getElementById("game-panel").classList.add("hidden");
   document.getElementById("game-hud").classList.add("hidden");
   document.getElementById("gameover-modal").classList.add("hidden");
+  document.getElementById("btn-reset-study").classList.toggle("hidden", modeType !== "study");
 
   Renderer.renderMap(mapDef, (entityId) => {
     handleEntityClick(entityId, modeType, mapDef);

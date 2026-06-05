@@ -133,6 +133,17 @@ const Stats = {
     this.save();
   },
 
+  // Remove all studied markers for a given map and recalculate
+  resetStudied(mapId) {
+    const s = this.get();
+    const entities = new Set(this._getEntitiesForMap(mapId));
+    for (const id of Object.keys(s.studiedEntities || {})) {
+      if (entities.has(id)) delete s.studiedEntities[id];
+    }
+    this._recalcLearning(mapId, s);
+    this.save();
+  },
+
   _recalcLearning(mapId, s) {
     if (!s.maps[mapId]) return;
     const allEntities = this._getEntitiesForMap(mapId);
