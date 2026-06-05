@@ -150,7 +150,7 @@ function applyCarouselTransform() {
   const viewport = document.querySelector(".carousel-viewport");
   const cards    = track.querySelectorAll(".map-card");
   if (!cards.length) return;
-  const cardW  = cards[0].offsetWidth + 14;
+  const cardW  = cards[0].offsetWidth + 16;
   const vw     = viewport.clientWidth;
   const offset = vw / 2 - cardW / 2 - carouselIdx * cardW;
   track.style.transform = `translateX(${offset}px)`;
